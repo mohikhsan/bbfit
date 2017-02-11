@@ -19,6 +19,7 @@ import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.media.MediaPlayer;
 
 import com.segway.robot.sdk.base.bind.ServiceBinder;
 import com.segway.robot.sdk.voice.Languages;
@@ -42,6 +43,8 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+
 
 
 public class MainActivity extends Activity implements View.OnClickListener {
@@ -82,6 +85,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private boolean gameButtonMode = false;
     private boolean gameEnds = false;
 
+    MediaPlayer lineSound;
+    MediaPlayer sleepSound;
+
     enum stageOfCondition{
         GREET,
         HOW_R_U,
@@ -93,6 +99,29 @@ public class MainActivity extends Activity implements View.OnClickListener {
     };
 
     stageOfCondition mStageOfCondition;
+
+
+    public void playLineMusic(View view) {
+        lineSound.start();
+    }
+
+    public void stopLineMusic(View view) {
+        lineSound.stop();
+        // kill the previous instance and create again
+        lineSound = MediaPlayer.create(this,R.raw.line_dance);
+    }
+
+    public void playSleepMusic(View view) {
+        sleepSound.start();
+    }
+
+    public void stopSleepMusic(View view) {
+        sleepSound.stop();
+        // kill the previous instance and create again
+        sleepSound = MediaPlayer.create(this,R.raw.sleep_music);
+    }
+
+
 
     public static class VoiceHandler extends Handler {
         private final WeakReference<MainActivity> mActivity;
@@ -132,6 +161,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mFaceImageView.setOnClickListener(this);
         startSequence();
         //startTalk();
+
+        lineSound = MediaPlayer.create(this,R.raw.line_dance);
+        sleepSound = MediaPlayer.create(this,R.raw.sleep_music);
+
     }
 
     @Override

@@ -41,6 +41,8 @@ import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 public class MainActivity extends Activity implements View.OnClickListener {
     private static final String TAG = "MainActivity";
@@ -58,6 +60,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private boolean isBeamForming = false;
     private boolean bindSpeakerService;
     private boolean bindRecognitionService;
+    private AtomicBoolean speakFinish = new AtomicBoolean(false);
+    private boolean isSpeaking;
+    private int speakCounter;
+
     private int mSpeakerLanguage;
     private int mRecognitionLanguage;
     private ImageView mFaceImageView;
@@ -70,6 +76,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private GrammarConstraint mTwoSlotGrammar;
     private GrammarConstraint mThreeSlotGrammar;
     private GrammarConstraint mGreetSlotGrammar;
+    private GrammarConstraint mPosSlotGrammar;
     private VoiceHandler mHandler = new VoiceHandler(this);
 
     public static class VoiceHandler extends Handler {
@@ -118,7 +125,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     // init UI.
     private void initButtons() {
         mFaceImageView = (ImageView) findViewById(R.id.face_imageview);
-
+//        speakFinish = false;
+        isSpeaking = false;
     }
 
     // start action sequence
@@ -226,6 +234,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Message resultMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "test");
                 mHandler.sendMessage(resultMsg);
 
+                speakCounter = 0;
             }
 
             @Override
@@ -254,19 +263,57 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Message resultMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "recognition result:" + result + ", confidence:" + recognitionResult.getConfidence());
                 mHandler.sendMessage(resultMsg);
 
+//                speakFinish = false;
+                speakFinish.set(false);
+
                 if (result.contains("greet") || result.contains("hi")){
                     Log.d(TAG, "greet");
                     try {
                         //do stuff here to start the demo
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
-                        mSpeaker.speak("hello, how are you today?", mTtsListener);
+                        isSpeaking = true;
+                        if (result.contains("grandma")){
+                            mSpeaker.speak("hi grandma, did you sleep well last night?", mTtsListener);
+                        } else if(result.contains("grandpa")) {
+                            mSpeaker.speak("hi grandpa, did you sleep well last night?", mTtsListener);
+                        } else{
+//                            mSpeaker.speak("hi there, what's up? how was your night?", mTtsListener);
+                            mSpeaker.speak("hello bla bla bla bla", mTtsListener);
+                        }
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
                     }
-                    return true;
                 }
-                return false;
+
+                if (result.contains("yes") || result.contains("ya")){
+                    Log.d(TAG, "positive answer");
+                    try {
+                        //do stuff here to start the demo
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, WINK, 0, "change talk image");
+                        mHandler.sendMessage(talkMsg);
+                        isSpeaking = true;
+                        mSpeaker.speak("that's great, do you want to play a game?", mTtsListener);
+                    } catch (VoiceException e) {
+                        Log.w(TAG, "Exception: ", e);
+                    }
+                }
+
+//                while(speakFinish == false){
+//
+//
+//                }
+
+                synchronized (speakFinish) {
+                    while (!speakFinish.get()) {
+                        try {
+                            speakFinish.wait();
+                        } catch (InterruptedException ignored) {
+                        }
+                    }
+                }
+
+                return true;
             }
 
             @Override
@@ -275,7 +322,33 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Log.d(TAG, "onRecognitionError: " + s);
                 Message errorMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "recognition error: " + s);
                 mHandler.sendMessage(errorMsg);
-                return false; //to wakeup
+
+                speakFinish.set(false);
+
+
+                try {
+                    //do stuff here to start the demo
+                    mSpeaker.speak("Sorry, can you repeat that?", mTtsListener);
+                    speakCounter++;
+                } catch (VoiceException e) {
+                    Log.w(TAG, "Exception: ", e);
+                }
+
+
+                synchronized (speakFinish) {
+                    while (!speakFinish.get()) {
+                        try {
+                            speakFinish.wait();
+                        } catch (InterruptedException ignored) {
+                        }
+                    }
+                }
+
+                if (speakCounter==2){
+                    return false;
+                } else {
+                    return true; //to wakeup
+                }
             }
         };
 
@@ -293,6 +366,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Log.d(TAG, "onSpeechStarted() called with: s = [" + s + "]");
                 Message statusMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "speech start");
                 mHandler.sendMessage(statusMsg);
+
             }
 
             @Override
@@ -301,6 +375,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Log.d(TAG, "onSpeechFinished() called with: s = [" + s + "]");
                 Message statusMsg = mHandler.obtainMessage(SHOW_MSG, SMILE, 0, "Smile again");
                 mHandler.sendMessage(statusMsg);
+//                speakFinish = true;
+                synchronized (speakFinish) {
+                    speakFinish.set(true);
+                    speakFinish.notify();
+                }
             }
 
             @Override
@@ -345,6 +424,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mRecognizer.addGrammarConstraint(mTwoSlotGrammar);
         mRecognizer.addGrammarConstraint(mThreeSlotGrammar);
         mRecognizer.addGrammarConstraint(mGreetSlotGrammar);
+        mRecognizer.addGrammarConstraint(mPosSlotGrammar);
     }
 
     private void addChineseGrammar() throws VoiceException, RemoteException {
@@ -397,13 +477,29 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 opSlot.addWord("to");
                 greetSlotList.add(opSlot);
 
-                patientSlot.setOptional(false);
+                patientSlot.setOptional(true);
                 patientSlot.addWord("grandpa");
                 patientSlot.addWord("grandma");
-                patientSlot.addWord("mom");
                 greetSlotList.add(patientSlot);
 
                 mGreetSlotGrammar = new GrammarConstraint("greet slots grammar", greetSlotList);
+
+                Slot yesSlot = new Slot("yes");
+                Slot meSlot = new Slot("i did");
+                List<Slot> positiveSlotList = new LinkedList<>();
+
+                yesSlot.setOptional(false);
+                yesSlot.addWord("yes");
+                yesSlot.addWord("ya");
+                positiveSlotList.add(yesSlot);
+
+                meSlot.setOptional(true);
+                meSlot.addWord("I did");
+                meSlot.addWord("I have");
+                positiveSlotList.add(meSlot);
+
+                mPosSlotGrammar = new GrammarConstraint("positive answer grammar", positiveSlotList);
+
                 break;
 
             case Languages.ZH_CN:
@@ -442,9 +538,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
             case TALK:
                 mFaceImageView.setImageResource(R.mipmap.talk);
                 break;
-
             case SMILE:
                 mFaceImageView.setImageResource(R.mipmap.bigeyesmile);
+                break;
+            case WINK:
+                mFaceImageView.setImageResource(R.mipmap.wink);
                 break;
         }
     }

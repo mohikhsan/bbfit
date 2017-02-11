@@ -48,6 +48,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private static final int SHOW_MSG = 0x0001;
     private static final int APPEND = 0x000f;
     private static final int CLEAR = 0x00f0;
+    private static final int SMILE = 0x0002;
+    private static final int TALK = 0x0003;
+    private static final int WINK = 0x0004;
+    private static final int HAPPY = 0X0005;
+
     private ServiceBinder.BindStateListener mRecognitionBindStateListener;
     private ServiceBinder.BindStateListener mSpeakerBindStateListener;
     private boolean isBeamForming = false;
@@ -55,7 +60,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private boolean bindRecognitionService;
     private int mSpeakerLanguage;
     private int mRecognitionLanguage;
-    private TextView mStatusTextView;
     private ImageView mFaceImageView;
     private Recognizer mRecognizer;
     private Speaker mSpeaker;
@@ -103,17 +107,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
         initButtons();
         initListeners();
         startSequence();
+        //startTalk();
     }
 
     @Override
     protected void onRestart() {
         super.onRestart();
-        mStatusTextView.setText("");
     }
 
     // init UI.
     private void initButtons() {
-        mStatusTextView = (TextView) findViewById(R.id.textView_status);
         mFaceImageView = (ImageView) findViewById(R.id.face_imageview);
 
     }
@@ -125,13 +128,16 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
         //bind the speaker service.
         mSpeaker.bindService(MainActivity.this, mSpeakerBindStateListener);
+    }
+
+    private void startTalk(){
 
         try {
+            System.out.println("Recognize called");
             mRecognizer.startRecognition(mWakeupListener, mRecognitionListener);
         } catch (VoiceException e) {
-            Log.e(TAG, "Exception: ", e);
+            Log.e(TAG, "Exception: Recognize called", e);
         }
-
 
     }
 
@@ -141,7 +147,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mRecognitionBindStateListener = new ServiceBinder.BindStateListener() {
             @Override
             public void onBind() {
-                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0,
+                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0,
                         getString(R.string.recognition_connected));
                 mHandler.sendMessage(connectMsg);
                 try {
@@ -162,13 +168,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 bindRecognitionService = true;
                 if (bindSpeakerService) {
                     //both speaker service and recognition service bind, enable function buttons.
+
                 }
             }
 
             @Override
             public void onUnbind(String s) {
                 //speaker service or recognition service unbind, disable function buttons.
-                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0, getString(R.string.recognition_disconnected));
+                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, getString(R.string.recognition_disconnected));
                 mHandler.sendMessage(connectMsg);
             }
         };
@@ -177,7 +184,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
             @Override
             public void onBind() {
                 try {
-                    Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0,
+                    Message connectMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0,
                             getString(R.string.speaker_connected));
                     mHandler.sendMessage(connectMsg);
                     //get speaker service language.
@@ -188,13 +195,14 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 bindSpeakerService = true;
                 if (bindRecognitionService) {
                     //both speaker service and recognition service bind, enable function buttons.
+                    startTalk();
                 }
             }
 
             @Override
             public void onUnbind(String s) {
                 //speaker service or recognition service unbind, disable function buttons.
-                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0, getString(R.string.speaker_disconnected));
+                Message connectMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, getString(R.string.speaker_disconnected));
                 mHandler.sendMessage(connectMsg);
             }
         };
@@ -205,14 +213,19 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Log.d(TAG, "onStandby");
                 Message statusMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "wakeup start, you can say \"OK loomo\".");
                 mHandler.sendMessage(statusMsg);
+                System.out.println("Wake-up called");
+
             }
 
             @Override
             public void onWakeupResult(WakeupResult wakeupResult) {
+
                 //show the wakeup result and wakeup angle.
                 Log.d(TAG, "wakeup word:" + wakeupResult.getResult() + ", angle: " + wakeupResult.getAngle());
-                Message resultMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "wakeup result:" + wakeupResult.getResult() + ", angle:" + wakeupResult.getAngle());
+                //Message resultMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "wakeup result:" + wakeupResult.getResult() + ", angle:" + wakeupResult.getAngle());
+                Message resultMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "test");
                 mHandler.sendMessage(resultMsg);
+
             }
 
             @Override
@@ -245,6 +258,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     Log.d(TAG, "greet");
                     try {
                         //do stuff here to start the demo
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
+                        mHandler.sendMessage(talkMsg);
                         mSpeaker.speak("hello, how are you today?", mTtsListener);
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
@@ -284,7 +299,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
             public void onSpeechFinished(String s) {
                 //s is speech content, callback this method when speech is finish.
                 Log.d(TAG, "onSpeechFinished() called with: s = [" + s + "]");
-                Message statusMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "speech end");
+                Message statusMsg = mHandler.obtainMessage(SHOW_MSG, SMILE, 0, "Smile again");
                 mHandler.sendMessage(statusMsg);
             }
 
@@ -419,10 +434,17 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private void showMessage(String msg, final int pattern) {
         switch (pattern) {
             case CLEAR:
-                mStatusTextView.setText(msg);
+                System.out.println(msg);
                 break;
             case APPEND:
-                mStatusTextView.append(msg);
+                System.out.println(msg);
+                break;
+            case TALK:
+                mFaceImageView.setImageResource(R.mipmap.talk);
+                break;
+
+            case SMILE:
+                mFaceImageView.setImageResource(R.mipmap.bigeyesmile);
                 break;
         }
     }
@@ -445,10 +467,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
             }
         }
-    }
-
-    private void showTip(String tip) {
-        Toast.makeText(this, tip, Toast.LENGTH_SHORT).show();
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.bbfit.hackdemo;
 
 import android.app.ActionBar;
 import android.app.Activity;
+import android.graphics.drawable.AnimationDrawable;
 import android.media.Image;
 import android.os.Environment;
 import android.os.Handler;
@@ -35,6 +36,14 @@ import com.segway.robot.sdk.voice.recognition.WakeupListener;
 import com.segway.robot.sdk.voice.recognition.WakeupResult;
 import com.segway.robot.sdk.voice.tts.TtsListener;
 
+// for locomotion
+import com.segway.robot.sdk.base.bind.ServiceBinder;
+import com.segway.robot.sdk.locomotion.sbv.AngularVelocity;
+import com.segway.robot.sdk.locomotion.sbv.Base;
+import com.segway.robot.sdk.locomotion.sbv.LinearVelocity;
+import java.util.Timer;
+import java.util.TimerTask;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -43,6 +52,10 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 
 
 
@@ -57,6 +70,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private static final int TALK = 0x0003;
     private static final int WINK = 0x0004;
     private static final int HAPPY = 0X0005;
+    private static final int PICTURE = 0X006;
 
     private ServiceBinder.BindStateListener mRecognitionBindStateListener;
     private ServiceBinder.BindStateListener mSpeakerBindStateListener;
@@ -64,7 +78,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private boolean bindSpeakerService;
     private boolean bindRecognitionService;
     private AtomicBoolean speakFinish = new AtomicBoolean(false);
-    private boolean isSpeaking;
     private int speakCounter;
 
     private int mSpeakerLanguage;
@@ -80,25 +93,91 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private GrammarConstraint mThreeSlotGrammar;
     private GrammarConstraint mGreetSlotGrammar;
     private GrammarConstraint mPosSlotGrammar;
+//    private GrammarConstraint mCatSlotGrammar;
     private VoiceHandler mHandler = new VoiceHandler(this);
+
+    private AnimationDrawable faceAnimation;
 
     private boolean gameButtonMode = false;
     private boolean gameEnds = false;
+    private boolean musicPlays = false;
 
     MediaPlayer lineSound;
     MediaPlayer sleepSound;
+
+    // for locomotion
+    private Base mBase;
+    private ServiceBinder.BindStateListener mBaseServiceBindStateListener;
+    private boolean mBaseIsBind = false;
+    private Timer mTimer;
+    private static final int ONE_SEC = 1000;
+    private int danceCW = 1;
+    private ScheduledExecutorService mScheduler;
 
     enum stageOfCondition{
         GREET,
         HOW_R_U,
         SLEEP_WELL,
+        CAT,
         POKE_FACE,
-        GUESS_PICTURE,
         FEEL_PAIN,
         EXERCISE
     };
 
     stageOfCondition mStageOfCondition;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        ActionBar actionBar = getActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+        }
+        Log.d("hello123", "hello kic");
+        mRecognizer = Recognizer.getInstance();
+        mSpeaker = Speaker.getInstance();
+        initButtons();
+        initListeners();
+        mFaceImageView.setOnClickListener(this);
+        startSequence();
+        //startTalk();
+
+        lineSound = MediaPlayer.create(this,R.raw.line_dance);
+        sleepSound = MediaPlayer.create(this,R.raw.sleep_music);
+
+        mBase = Base.getInstance();
+        mScheduler = Executors.newSingleThreadScheduledExecutor();
+
+    }
+
+    @Override
+    public void onWindowFocusChanged (boolean hasFocus){
+        super.onWindowFocusChanged(hasFocus);
+
+        faceAnimation.start();
+    }
+
+    /*
+    @brief make the robot dance
+     */
+    public void lineDanceStart(){
+        mScheduler.scheduleAtFixedRate
+                (new Runnable() {
+                    public void run() {
+                        mBase.setAngularVelocity(2 * danceCW);
+                        danceCW = -1*danceCW;
+                    }
+                }, 0, 2, TimeUnit.SECONDS);
+    }
+
+
+
+    public void lineDanceStop(){
+        mScheduler.shutdown();
+        mBase.setAngularVelocity(0);
+    }
 
 
     public void playLineMusic(View view) {
@@ -144,28 +223,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
 
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        ActionBar actionBar = getActionBar();
-        if (actionBar != null) {
-            actionBar.setDisplayHomeAsUpEnabled(true);
-        }
-        Log.d("hello123", "hello kic");
-        mRecognizer = Recognizer.getInstance();
-        mSpeaker = Speaker.getInstance();
-        initButtons();
-        initListeners();
-        mFaceImageView.setOnClickListener(this);
-        startSequence();
-        //startTalk();
-
-        lineSound = MediaPlayer.create(this,R.raw.line_dance);
-        sleepSound = MediaPlayer.create(this,R.raw.sleep_music);
-
-    }
 
     @Override
     protected void onRestart() {
@@ -175,8 +233,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     // init UI.
     private void initButtons() {
         mFaceImageView = (ImageView) findViewById(R.id.face_imageview);
-//        speakFinish = false;
-        isSpeaking = false;
+        mFaceImageView.setBackgroundResource(R.drawable.default_anim);
+        faceAnimation = (AnimationDrawable) mFaceImageView.getBackground();
     }
 
     // start action sequence
@@ -201,6 +259,38 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     //init listeners.
     private void initListeners() {
+
+        // get Base Instance
+        mBase = Base.getInstance();
+        // bindService, if not, all Base api will not work.
+        mBase.bindService(getApplicationContext(), new ServiceBinder.BindStateListener() {
+            @Override
+            public void onBind() {
+                mBaseIsBind = true;
+                mTimer = new Timer();
+                mTimer.scheduleAtFixedRate(new TimerTask() {
+                    @Override
+                    public void run() {
+                        final AngularVelocity av = mBase.getAngularVelocity();
+                        final LinearVelocity lv = mBase.getLinearVelocity();
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {}
+                        });
+                    }
+                }, 50, 200);
+            }
+
+            @Override
+            public void onUnbind(String reason) {
+                mBaseIsBind = false;
+                if (mTimer != null) {
+                    mTimer.cancel();
+                    mTimer = null;
+                }
+            }
+        });
+
 
         mRecognitionBindStateListener = new ServiceBinder.BindStateListener() {
             @Override
@@ -299,6 +389,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mRecognitionListener = new RecognitionListener() {
             @Override
             public void onRecognitionStart() {
+                if(gameEnds) return;
                 Log.d(TAG, "onRecognitionStart");
                 Message statusMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "recognition start, you can say \"turn left\".");
                 mHandler.sendMessage(statusMsg);
@@ -322,7 +413,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         //do stuff here to start the demo
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
-                        isSpeaking = true;
 
                         // next stage is asking for sleeping
                         mStageOfCondition = stageOfCondition.SLEEP_WELL;
@@ -338,15 +428,27 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
                     }
-                }
-
-                if (mStageOfCondition == stageOfCondition.SLEEP_WELL && (result.contains("yes") || result.contains("ya"))){
+                } else if (mStageOfCondition == stageOfCondition.SLEEP_WELL && (result.contains("yes") || result.contains("ya"))){
                     Log.d(TAG, "positive answer");
                     try {
                         //do stuff here to start the demo
-                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, WINK, 0, "change talk image");
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, PICTURE, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
-                        isSpeaking = true;
+
+                        // next stage is poke
+                        mStageOfCondition = stageOfCondition.CAT;
+                        gameButtonMode = true;
+
+                        mSpeaker.speak("that's great, can you tell me what's in this picture?", mTtsListener);
+                    } catch (VoiceException e) {
+                        Log.w(TAG, "Exception: ", e);
+                    }
+                } else if (mStageOfCondition == stageOfCondition.CAT && (result.contains("cat") || result.contains("kitten"))){
+                    Log.d(TAG, "positive answer");
+                    try {
+                        //do stuff here to start the demo
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
+                        mHandler.sendMessage(talkMsg);
 
                         // next stage is poke
                         mStageOfCondition = stageOfCondition.POKE_FACE;
@@ -355,6 +457,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         mSpeaker.speak("that's great, poke my cheek please!", mTtsListener);
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
+                    }
+                } else {
+                    synchronized (speakFinish) {
+                        speakFinish.set(true);
+                        speakFinish.notify();
                     }
                 }
 
@@ -379,10 +486,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
             public boolean onRecognitionError(String s) {
                 //show the recognition error reason.
                 Log.d(TAG, "onRecognitionError: " + s);
-                Message errorMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "recognition error: " + s);
+                Message errorMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "recognition error: " + s);
                 mHandler.sendMessage(errorMsg);
 
-                if(gameEnds) return true;
+                if(gameEnds){
+                    Log.d(TAG, "game Ends, return True");
+                    return false;
+                }
 
                 if(!gameButtonMode) {
                     speakFinish.set(false);
@@ -406,7 +516,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     }
                 }
 
-                if (speakCounter==2){
+                if (speakCounter==3){
                     return false;
                 } else {
                     return true; //to wakeup
@@ -465,16 +575,38 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         Log.d(TAG, "button is PRESSED! ");
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, WINK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
-                        isSpeaking = true;
 
                         // next stage is poke
                         mStageOfCondition = stageOfCondition.EXERCISE;
                         gameButtonMode = false;
                         mSpeaker.speak("Ouch! That'good. Let's exercise now!", mTtsListener);
                         gameEnds = true;
+                        lineSound.start();
+                        musicPlays = true;
+                        lineDanceStart();
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
                     }
+                }
+
+                else if(musicPlays){
+                    lineSound.stop();
+                    lineDanceStop();
+                    musicPlays = false;
+                    try {
+                        Log.d(TAG, "stop the music ");
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, SMILE, 0, "change talk image");
+                        mHandler.sendMessage(talkMsg);
+
+                        // next stage is poke
+                        mStageOfCondition = stageOfCondition.GREET;
+                        gameButtonMode = false;
+                        gameEnds = false;
+                        mSpeaker.speak("That's it for today? Good bye!", mTtsListener);
+                    } catch (VoiceException e) {
+                        Log.w(TAG, "Exception: ", e);
+                    }
+
                 }
         }
 
@@ -508,6 +640,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mRecognizer.addGrammarConstraint(mThreeSlotGrammar);
         mRecognizer.addGrammarConstraint(mGreetSlotGrammar);
         mRecognizer.addGrammarConstraint(mPosSlotGrammar);
+//        mRecognizer.addGrammarConstraint(mCatSlotGrammar);
     }
 
     private void addChineseGrammar() throws VoiceException, RemoteException {
@@ -574,6 +707,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 yesSlot.setOptional(false);
                 yesSlot.addWord("yes");
                 yesSlot.addWord("ya");
+                yesSlot.addWord("cat");
                 positiveSlotList.add(yesSlot);
 
                 meSlot.setOptional(true);
@@ -582,6 +716,21 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 positiveSlotList.add(meSlot);
 
                 mPosSlotGrammar = new GrammarConstraint("positive answer grammar", positiveSlotList);
+
+//                Slot catSlot = new Slot("cat");
+//                Slot theSlot = new Slot("a");
+//                List<Slot> catSlotList = new LinkedList<>();
+//
+//                catSlot.setOptional(false);
+//                catSlot.addWord("cat");
+//                catSlot.addWord("kitten");
+//                catSlotList.add(catSlot);
+//
+//                theSlot.setOptional(true);
+//                theSlot.addWord("a");
+//                catSlotList.add(theSlot);
+//
+//                mCatSlotGrammar = new GrammarConstraint("cat answer grammar", catSlotList);
 
                 break;
 
@@ -619,13 +768,33 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 System.out.println(msg);
                 break;
             case TALK:
-                mFaceImageView.setImageResource(R.mipmap.talk);
+//                mFaceImageView.setImageResource(R.mipmap.talk);
+                mFaceImageView.setImageResource(0);
+                faceAnimation.stop();
+                mFaceImageView.setBackgroundResource(R.drawable.speaking_anim);
+                faceAnimation = (AnimationDrawable) mFaceImageView.getBackground();
+                faceAnimation.start();
                 break;
             case SMILE:
-                mFaceImageView.setImageResource(R.mipmap.bigeyesmile);
+                mFaceImageView.setImageResource(0);
+                faceAnimation.stop();
+                mFaceImageView.setBackgroundResource(R.drawable.default_anim);
+                faceAnimation = (AnimationDrawable) mFaceImageView.getBackground();
+                faceAnimation.start();
                 break;
             case WINK:
-                mFaceImageView.setImageResource(R.mipmap.wink);
+//                mFaceImageView.setImageResource(R.mipmap.wink);
+                mFaceImageView.setImageResource(0);
+                faceAnimation.stop();
+                mFaceImageView.setBackgroundResource(R.drawable.default_anim);
+                faceAnimation = (AnimationDrawable) mFaceImageView.getBackground();
+                faceAnimation.start();
+                break;
+            case PICTURE:
+                mFaceImageView.setImageResource(R.mipmap.cat);
+//                faceAnimation.stop();
+//                mFaceImageView.setBackgroundResource(R.mipmap.cat);
+                //faceAnimation = (AnimationDrawable) mFaceImageView.getBackground();
                 break;
         }
     }

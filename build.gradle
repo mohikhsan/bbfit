@@ -15,7 +15,7 @@ android {
     compileSdkVersion 22
     buildToolsVersion '25.0.2'
     defaultConfig {
-        applicationId "com.segway.speechdemo"
+        applicationId "com.bbfit.hackdemo"
         minSdkVersion 19
         targetSdkVersion 22
         versionCode 1

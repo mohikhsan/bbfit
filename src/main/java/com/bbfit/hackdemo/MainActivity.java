@@ -2,6 +2,7 @@ package com.bbfit.hackdemo;
 
 import android.app.ActionBar;
 import android.app.Activity;
+import android.media.Image;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
@@ -14,6 +15,7 @@ import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,16 +55,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private boolean bindRecognitionService;
     private int mSpeakerLanguage;
     private int mRecognitionLanguage;
-    private Button mBindButton;
-    private Button mUnbindButton;
-    private Button mSpeakButton;
-    private Button mStopSpeakButton;
-    private Button mStartRecognitionButton;
-    private Button mStopRecognitionButton;
-    private Button mBeamFormListenButton;
-    private Button mStopBeamFormListenButton;
-    private Switch mEnableBeamFormSwitch;
     private TextView mStatusTextView;
+    private ImageView mFaceImageView;
     private Recognizer mRecognizer;
     private Speaker mSpeaker;
     private WakeupListener mWakeupListener;
@@ -108,6 +102,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mSpeaker = Speaker.getInstance();
         initButtons();
         initListeners();
+        startSequence();
     }
 
     @Override
@@ -118,27 +113,26 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     // init UI.
     private void initButtons() {
-        mBindButton = (Button) findViewById(R.id.button_bind);
-        mUnbindButton = (Button) findViewById(R.id.button_unbind);
-        mSpeakButton = (Button) findViewById(R.id.button_speak);
-        mStopSpeakButton = (Button) findViewById(R.id.button_stop_speaking);
-        mStartRecognitionButton = (Button) findViewById(R.id.button_start_recognition);
-        mStopRecognitionButton = (Button) findViewById(R.id.button_stop_recognition);
-        mStopBeamFormListenButton = (Button) findViewById(R.id.button_stop_beam_forming);
-        mBeamFormListenButton = (Button) findViewById(R.id.button_get_beam_forming_raw_data);
         mStatusTextView = (TextView) findViewById(R.id.textView_status);
-        mEnableBeamFormSwitch = (Switch) findViewById(R.id.switch_beam_forming);
+        mFaceImageView = (ImageView) findViewById(R.id.face_imageview);
 
-        disableSampleFunctionButtons();
+    }
 
-        mBindButton.setOnClickListener(this);
-        mUnbindButton.setOnClickListener(this);
-        mSpeakButton.setOnClickListener(this);
-        mStopSpeakButton.setOnClickListener(this);
-        mStartRecognitionButton.setOnClickListener(this);
-        mStopRecognitionButton.setOnClickListener(this);
-        mBeamFormListenButton.setOnClickListener(this);
-        mStopBeamFormListenButton.setOnClickListener(this);
+    // start action sequence
+    private void startSequence(){
+        //bind the recognition service.
+        mRecognizer.bindService(MainActivity.this, mRecognitionBindStateListener);
+
+        //bind the speaker service.
+        mSpeaker.bindService(MainActivity.this, mSpeakerBindStateListener);
+
+        try {
+            mRecognizer.startRecognition(mWakeupListener, mRecognitionListener);
+        } catch (VoiceException e) {
+            Log.e(TAG, "Exception: ", e);
+        }
+
+
     }
 
     //init listeners.
@@ -168,16 +162,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 bindRecognitionService = true;
                 if (bindSpeakerService) {
                     //both speaker service and recognition service bind, enable function buttons.
-                    enableSampleFunctionButtons();
-                    mUnbindButton.setEnabled(true);
                 }
             }
 
             @Override
             public void onUnbind(String s) {
                 //speaker service or recognition service unbind, disable function buttons.
-                disableSampleFunctionButtons();
-                mUnbindButton.setEnabled(false);
                 Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0, getString(R.string.recognition_disconnected));
                 mHandler.sendMessage(connectMsg);
             }
@@ -198,15 +188,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 bindSpeakerService = true;
                 if (bindRecognitionService) {
                     //both speaker service and recognition service bind, enable function buttons.
-                    enableSampleFunctionButtons();
-                    mUnbindButton.setEnabled(true);
                 }
             }
 
             @Override
             public void onUnbind(String s) {
                 //speaker service or recognition service unbind, disable function buttons.
-                disableSampleFunctionButtons();
                 Message connectMsg = mHandler.obtainMessage(SHOW_MSG, APPEND, 0, getString(R.string.speaker_disconnected));
                 mHandler.sendMessage(connectMsg);
             }
@@ -309,164 +296,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 mHandler.sendMessage(statusMsg);
             }
         };
-
-        mEnableBeamFormSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-                try {
-                    mRecognizer.beamForming(b);
-                    Message beamForming = mHandler.obtainMessage(SHOW_MSG);
-                    if (b) {
-                        beamForming.obj = "enable beam forming";
-                    } else {
-                        beamForming.obj = "disable beam forming";
-                    }
-                    mHandler.sendMessage(beamForming);
-                    mEnableBeamFormSwitch.setText(b ? R.string.enabled : R.string.disabled);
-                } catch (VoiceException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-            }
-        });
-    }
-
-    //enable sample function buttons.
-    private void enableSampleFunctionButtons() {
-        mSpeakButton.setEnabled(true);
-        mStopSpeakButton.setEnabled(true);
-        mStartRecognitionButton.setEnabled(true);
-        mBeamFormListenButton.setEnabled(true);
-        mEnableBeamFormSwitch.setEnabled(true);
-    }
-
-    //disable sample function buttons.
-    private void disableSampleFunctionButtons() {
-        mUnbindButton.setEnabled(false);
-        mSpeakButton.setEnabled(false);
-        mStopSpeakButton.setEnabled(false);
-        mStartRecognitionButton.setEnabled(false);
-        mStopRecognitionButton.setEnabled(false);
-        mStopBeamFormListenButton.setEnabled(false);
-        mBeamFormListenButton.setEnabled(false);
-        mEnableBeamFormSwitch.setEnabled(false);
     }
 
     @Override
     public void onClick(View view) {
-        switch (view.getId()) {
-            case R.id.button_bind:
-                showTip("bind recognition service and speaker service.");
-                mStatusTextView.setText("");
-                //bind the recognition service.
-                mRecognizer.bindService(MainActivity.this, mRecognitionBindStateListener);
 
-                //bind the speaker service.
-                mSpeaker.bindService(MainActivity.this, mSpeakerBindStateListener);
-                break;
-            case R.id.button_unbind:
-                showTip("unbind recognition service and speaker service.");
-                //unbind the recognition service and speaker service.
-                if (isBeamForming) {
-                    try {
-                        mRecognizer.stopBeamFormingListen();
-                    } catch (VoiceException e) {
-                        Log.e(TAG, "Exception: ", e);
-                    }
-                }
-                mRecognizer.unbindService();
-                mSpeaker.unbindService();
-                mStatusTextView.setText(R.string.disconnect);
-                disableSampleFunctionButtons();
-                mBindButton.setEnabled(true);
-                break;
-            case R.id.button_speak:
-                showTip("start to speak.");
-                Log.d(TAG, "onClick speak");
-                //tts
-                /*try {
-                    Log.d(TAG, "stopSpeak");
-                    mSpeaker.stopSpeak();
-                } catch (VoiceException | RemoteException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }*/
-                try {
-                    if (mSpeakerLanguage == Languages.EN_US) {
-                        Log.d(TAG, "start speak");
-                        mSpeaker.speak("hi can you touch my ear?", mTtsListener);
-                    } else if (mSpeakerLanguage == Languages.ZH_CN) {
-                        mSpeaker.speak("你好，我是赛格威机器人。", mTtsListener);
-                    } else {
-                        Log.e(TAG, "It should not happen!");
-                        break;
-                    }
-                    //block for 3 seconds, return true if speech time is smaller than 3 seconds, else return false.
-                    /*boolean timeout = mSpeaker.waitForSpeakFinish(3000);*/
-                } catch (VoiceException e) {
-                    Log.w(TAG, "Exception: ", e);
-                }
-                break;
-            case R.id.button_stop_speaking:
-                showTip("stop speaking.");
-                //stop speech.
-                try {
-                    mSpeaker.stopSpeak();
-                } catch (VoiceException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-                break;
-            case R.id.button_start_recognition:
-                showTip("start wakeup and recognition.");
-                //start the wakeup and the recognition.
-                mStartRecognitionButton.setEnabled(false);
-                mStopRecognitionButton.setEnabled(true);
-                mBeamFormListenButton.setEnabled(false);
-                try {
-                    mRecognizer.startRecognition(mWakeupListener, mRecognitionListener);
-                } catch (VoiceException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-                break;
-            case R.id.button_stop_recognition:
-                showTip("stop wakeup and recognition.");
-                //stop getting results of the wakeup and the recognition.
-                mStartRecognitionButton.setEnabled(true);
-                mStopRecognitionButton.setEnabled(false);
-                mBeamFormListenButton.setEnabled(true);
-                try {
-                    mRecognizer.stopRecognition();
-                } catch (VoiceException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-                break;
-            case R.id.button_get_beam_forming_raw_data:
-                showTip("start to get beam forming raw data.");
-                isBeamForming = true;
-                //start beam forming listening
-                mBeamFormListenButton.setEnabled(false);
-                mStopBeamFormListenButton.setEnabled(true);
-                mStartRecognitionButton.setEnabled(false);
-                mStatusTextView.setText(R.string.start_beam_forming);
-                try {
-                    mRecognizer.startBeamFormingListen(mRawDataListener);
-                } catch (VoiceException e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-                break;
-            case R.id.button_stop_beam_forming:
-                showTip("stop beam forming listening.");
-                isBeamForming = false;
-                //stop beam forming listening
-                mBeamFormListenButton.setEnabled(true);
-                mStopBeamFormListenButton.setEnabled(false);
-                mStartRecognitionButton.setEnabled(true);
-                mStatusTextView.setText(R.string.close_beam_forming);
-                try {
-                    mRecognizer.stopBeamFormingListen();
-                } catch (VoiceException  e) {
-                    Log.e(TAG, "Exception: ", e);
-                }
-                break;
-        }
     }
 
     private void addEnglishGrammar() throws VoiceException, RemoteException {

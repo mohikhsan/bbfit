@@ -79,6 +79,21 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private GrammarConstraint mPosSlotGrammar;
     private VoiceHandler mHandler = new VoiceHandler(this);
 
+    private boolean gameButtonMode = false;
+    private boolean gameEnds = false;
+
+    enum stageOfCondition{
+        GREET,
+        HOW_R_U,
+        SLEEP_WELL,
+        POKE_FACE,
+        GUESS_PICTURE,
+        FEEL_PAIN,
+        EXERCISE
+    };
+
+    stageOfCondition mStageOfCondition;
+
     public static class VoiceHandler extends Handler {
         private final WeakReference<MainActivity> mActivity;
 
@@ -102,6 +117,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ActionBar actionBar = getActionBar();
@@ -113,6 +129,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mSpeaker = Speaker.getInstance();
         initButtons();
         initListeners();
+        mFaceImageView.setOnClickListener(this);
         startSequence();
         //startTalk();
     }
@@ -273,6 +290,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
                         isSpeaking = true;
+
+                        // next stage is asking for sleeping
+                        mStageOfCondition = stageOfCondition.SLEEP_WELL;
+
                         if (result.contains("grandma")){
                             mSpeaker.speak("hi grandma, did you sleep well last night?", mTtsListener);
                         } else if(result.contains("grandpa")) {
@@ -286,14 +307,19 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     }
                 }
 
-                if (result.contains("yes") || result.contains("ya")){
+                if (mStageOfCondition == stageOfCondition.SLEEP_WELL && (result.contains("yes") || result.contains("ya"))){
                     Log.d(TAG, "positive answer");
                     try {
                         //do stuff here to start the demo
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, WINK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
                         isSpeaking = true;
-                        mSpeaker.speak("that's great, do you want to play a game?", mTtsListener);
+
+                        // next stage is poke
+                        mStageOfCondition = stageOfCondition.POKE_FACE;
+                        gameButtonMode = true;
+
+                        mSpeaker.speak("that's great, poke my cheek please!", mTtsListener);
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
                     }
@@ -323,17 +349,20 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 Message errorMsg = mHandler.obtainMessage(SHOW_MSG, CLEAR, 0, "recognition error: " + s);
                 mHandler.sendMessage(errorMsg);
 
-                speakFinish.set(false);
+                if(gameEnds) return true;
+
+                if(!gameButtonMode) {
+                    speakFinish.set(false);
 
 
-                try {
-                    //do stuff here to start the demo
-                    mSpeaker.speak("Sorry, can you repeat that?", mTtsListener);
-                    speakCounter++;
-                } catch (VoiceException e) {
-                    Log.w(TAG, "Exception: ", e);
+                    try {
+                        //do stuff here to start the demo
+                        mSpeaker.speak("Sorry, can you repeat that?", mTtsListener);
+                        speakCounter++;
+                    } catch (VoiceException e) {
+                        Log.w(TAG, "Exception: ", e);
+                    }
                 }
-
 
                 synchronized (speakFinish) {
                     while (!speakFinish.get()) {
@@ -351,6 +380,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 }
             }
         };
+
+
 
         mRawDataListener = new RawDataListener() {
             @Override
@@ -394,6 +425,25 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     public void onClick(View view) {
+        switch(view.getId()) {
+            case R.id.face_imageview:
+                if (gameButtonMode) {
+                    try {
+                        Log.d(TAG, "button is PRESSED! ");
+                        Message talkMsg = mHandler.obtainMessage(SHOW_MSG, WINK, 0, "change talk image");
+                        mHandler.sendMessage(talkMsg);
+                        isSpeaking = true;
+
+                        // next stage is poke
+                        mStageOfCondition = stageOfCondition.EXERCISE;
+                        gameButtonMode = false;
+                        mSpeaker.speak("Ouch! That'good. Let's exercise now!", mTtsListener);
+                        gameEnds = true;
+                    } catch (VoiceException e) {
+                        Log.w(TAG, "Exception: ", e);
+                    }
+                }
+        }
 
     }
 

@@ -47,12 +47,14 @@ import java.util.TimerTask;
 // for tracking
 import com.segway.robot.algo.dts.DTSPerson;
 import com.segway.robot.algo.dts.PersonTrackingListener;
-import com.segway.robot.hackathonsample.controller.SimpleController;
+import com.bbfit.hackdemo.controller.SimpleController;
 import com.segway.robot.sdk.base.bind.ServiceBinder;
 import com.segway.robot.sdk.locomotion.head.Head;
 import com.segway.robot.sdk.locomotion.sbv.Base;
 import com.segway.robot.sdk.vision.DTS;
 import com.segway.robot.sdk.vision.Vision;
+import android.widget.Toast;
+import android.graphics.Rect;
 
 import java.io.File;
 import java.io.IOException;
@@ -84,6 +86,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     private ServiceBinder.BindStateListener mRecognitionBindStateListener;
     private ServiceBinder.BindStateListener mSpeakerBindStateListener;
+    private ServiceBinder.BindStateListener mBaseBindStateListener;
+    private ServiceBinder.BindStateListener mVisionBindStateListener;
+    private PersonTrackingListener mPersonTrackingListener;
+
+
     private boolean isBeamForming = false;
     private boolean bindSpeakerService;
     private boolean bindRecognitionService;
@@ -118,6 +125,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     // for locomotion
     private Base mBase;
     private ServiceBinder.BindStateListener mBaseServiceBindStateListener;
+    private ServiceBinder.BindStateListener mHeadBindStateListener;
+
     private boolean mBaseIsBind = false;
     private Timer mTimer;
     private static final int ONE_SEC = 1000;
@@ -134,6 +143,27 @@ public class MainActivity extends Activity implements View.OnClickListener {
         EXERCISE
     };
 
+    // for tracking
+    private DTS mDTS;
+    private Vision mVision;
+    private Head mHead;
+    private boolean mHeadBind;
+
+    private boolean mBaseBind;
+
+    enum DtsState{
+        STOP,
+        DETECTING,
+        TRACKING
+    }
+
+
+    boolean mHeadFollow = true;
+    boolean mBaseFollow;
+
+    DtsState mDtsState =  DtsState.STOP;
+    SimpleController mController;
+
     stageOfCondition mStageOfCondition;
 
     @Override
@@ -148,6 +178,11 @@ public class MainActivity extends Activity implements View.OnClickListener {
         Log.d("hello123", "hello kic");
         mRecognizer = Recognizer.getInstance();
         mSpeaker = Speaker.getInstance();
+        // for tracking
+        mVision = Vision.getInstance();
+        mHead = Head.getInstance();
+        mBase = Base.getInstance();
+
         initButtons();
         initListeners();
         mFaceImageView.setOnClickListener(this);
@@ -157,8 +192,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
         lineSound = MediaPlayer.create(this,R.raw.line_dance);
         sleepSound = MediaPlayer.create(this,R.raw.sleep_music);
 
-        mBase = Base.getInstance();
         mScheduler = Executors.newSingleThreadScheduledExecutor();
+
+
 
     }
 
@@ -254,6 +290,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
         //bind the speaker service.
         mSpeaker.bindService(MainActivity.this, mSpeakerBindStateListener);
+
+        // bind base
+        mVision.bindService(this, mVisionBindStateListener);
+        mHead.bindService(this, mHeadBindStateListener);
+        mBase.bindService(this, mBaseBindStateListener);
+
     }
 
     private void startTalk(){
@@ -267,8 +309,157 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     }
 
+    private void detectPerson(){
+        if (mDtsState != DtsState.DETECTING) {
+            mDtsState = DtsState.DETECTING;
+            Log.d(TAG,"Detecting person...");
+            new Thread() {
+                @Override
+                public void run() {
+                    try {
+                        Thread.sleep(1500);
+                    } catch (InterruptedException ignored) {
+                    }
+                    DTSPerson[] dtsPersons = mDTS.detectPersons(5 * 1000 * 1000);
+                    mDtsState = DtsState.STOP;
+                    //Rect[] rects = new Rect[dtsPersons.length];
+                    //for (int i = 0; i < dtsPersons.length; i++) {
+                    //    rects[i] = dtsPersons[i].getDrawingRect();
+                    //}
+//                    mTextureView.drawRect(rects);
+                    Log.d(TAG,"Detect finish, " + dtsPersons.length + " person detected.");
+                }
+            }.start();
+        }
+    }
+
+
+    /*
+    @brief track person
+     */
+    private void trackPerson(){
+        System.out.println(mDtsState);
+        if(mBaseBind) Log.d(TAG, "base bind is true");
+        else Log.d(TAG, "base bind is false");
+        if (mDtsState != DtsState.TRACKING) {
+            Log.d(TAG,"Tracking...");
+            mDTS.startPersonTracking(null, 300 * 1000 * 100, mPersonTrackingListener);
+            mDtsState = DtsState.TRACKING;
+            Log.d(TAG,"Tracking...");
+        } else {
+            mDTS.stopPersonTracking();
+            mDtsState = DtsState.STOP;
+            Log.d(TAG,"Stop Tracking");
+        }
+    }
+
+    private void baseFollow(){
+        if (!mBaseBind) {
+//            showToast("Connect to Base First...");
+            return;
+        }
+        if (!mBaseFollow) {
+//            showToast("Enable Base Follow");
+            mBaseFollow = true;
+        } else {
+//            showToast("Disable Base Follow");
+            mBaseFollow = false;
+            mController = null;
+            mBase.stop();
+        }
+    }
+
+
     //init listeners.
     private void initListeners() {
+
+
+
+        mHeadBindStateListener = new ServiceBinder.BindStateListener() {
+            @Override
+            public void onBind() {
+                mHeadBind = true;
+                mHead.setMode(Head.MODE_SMOOTH_TACKING);
+                mHead.setWorldPitch(0.3f);
+            }
+
+            @Override
+            public void onUnbind(String reason) {
+                mHeadBind = false;
+            }
+        };
+        // for tracking
+        mVisionBindStateListener = new ServiceBinder.BindStateListener() {
+            @Override
+            public void onBind() {
+                mDTS =  mVision.getDTS();
+                mDTS.setVideoSource(DTS.VideoSource.CAMERA);
+//                Surface surface = new Surface(mTextureView.getPreview().getSurfaceTexture());
+//                mDTS.setPreviewDisplay(surface);
+                mDTS.start();
+            }
+
+            @Override
+            public void onUnbind(String reason) {
+                mDTS = null;
+            }
+        };
+
+        mPersonTrackingListener = new PersonTrackingListener() {
+            @Override
+            public void onPersonTracking(final DTSPerson person) {
+                Log.d(TAG, "onPersonTracking: " + person);
+                if (person == null) {
+                    return;
+                }
+//            mTextureView.drawRect(person.getDrawingRect());
+                if (mHeadFollow) {
+                    mHead.setMode(Head.MODE_SMOOTH_TACKING);
+                    mHead.setWorldYaw(person.getTheta() / 2);
+                    mHead.setWorldPitch(person.getPitch());
+                }
+                if (mBaseFollow) {
+                    SimpleController controller = mController;
+                    if (controller == null) {
+                        mController = new SimpleController(new SimpleController.StateListener() {
+                            @Override
+                            public void onFinish() {
+                                mController = null;
+                            }
+                        }, mBase);
+                        controller = mController;
+                        controller.setTargetRobotPose(person.getX(), person.getY(), person.getTheta());
+                        controller.updateandFollow();
+                        controller.startProcess();
+                    } else {
+                        controller.setTargetRobotPose(person.getX(), person.getY(), person.getTheta());
+                        //controller.updatePoseAndDistance();
+                        controller.updateandFollow();
+                    }
+                }
+            }
+
+            @Override
+            public void onPersonTrackingError(int errorCode, String message) {
+//            Log.d("Person tracking error: code=" + errorCode + " message=" + message);
+                mDtsState = DtsState.STOP;
+            }
+        };
+
+
+        mBaseBindStateListener = new ServiceBinder.BindStateListener() {
+            @Override
+            public void onBind() {
+                mBaseBind = true;
+            }
+
+            @Override
+            public void onUnbind(String reason) {
+                mBaseBind = false;
+            }
+        };
+
+
 
         // get Base Instance
         mBase = Base.getInstance();
@@ -421,6 +612,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
                     Log.d(TAG, "greet");
                     try {
                         //do stuff here to start the demo
+                        //detectPerson();
+
+                        trackPerson();
+                        baseFollow();
+
+                        //
+
                         Message talkMsg = mHandler.obtainMessage(SHOW_MSG, TALK, 0, "change talk image");
                         mHandler.sendMessage(talkMsg);
 

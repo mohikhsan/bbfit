@@ -48,4 +48,6 @@ dependencies {
     compile 'com.segway.robot:speech-sdk:0.5.17'
     compile 'com.segway.robot:headsdk:0.5.27'
     compile 'com.segway.robot:basesdk:0.5.27'
+    compile 'com.segway.robot:visionsdk:0.6.20'
+
 }

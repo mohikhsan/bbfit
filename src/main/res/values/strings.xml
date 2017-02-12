@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SpeechSample</string>
+    <string name="app_name">BB Fit</string>
     <string name="bind_service">bind\n service</string>
     <string name="unbind_service">unbind\n service</string>
     <string name="start_recognition">start\nrecognition</string>

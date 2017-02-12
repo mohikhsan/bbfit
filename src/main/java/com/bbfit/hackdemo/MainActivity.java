@@ -132,6 +132,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private static final int ONE_SEC = 1000;
     private int danceCW = 1;
     private ScheduledExecutorService mScheduler;
+    private int mFinishStatus =1;
 
     enum stageOfCondition{
         GREET,
@@ -436,6 +437,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         //controller.updatePoseAndDistance();
                         controller.updateandFollow();
                     }
+                    mFinishStatus = controller.trackStatus;
                 }
             }
 
@@ -458,7 +460,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 mBaseBind = false;
             }
         };
-
 
 
         // get Base Instance
@@ -616,6 +617,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
                         trackPerson();
                         baseFollow();
+                        while(mFinishStatus !=0){};
 
                         //
 

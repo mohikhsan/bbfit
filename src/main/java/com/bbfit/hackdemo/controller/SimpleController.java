@@ -28,6 +28,8 @@ public class SimpleController{
     private StateListener mStateListener;
     private Base mBase;
 
+    public int trackStatus=1;
+
     class DistanceAndOrientation{
         double d;
         double a;
@@ -90,7 +92,7 @@ public class SimpleController{
         Log.d(TAG, "updatePoseAndDistance");
         updateCurrentRobotPose();
         updateStartRobotPose();
-        processTargetRobotPose();
+        trackStatus = processTargetRobotPose();
         updateCurrentDistance();
     }
 

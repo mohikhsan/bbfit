@@ -618,6 +618,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         trackPerson();
                         baseFollow();
                         while(mFinishStatus !=0){};
+                        mBaseFollow = false;
+
 
                         //
 
@@ -633,7 +635,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                             mSpeaker.speak("hi grandpa, did you sleep well last night?", mTtsListener);
                         } else{
 //                            mSpeaker.speak("hi there, what's up? how was your night?", mTtsListener);
-                            mSpeaker.speak("hello bla bla bla bla", mTtsListener);
+                            mSpeaker.speak("hello, did you sleep well last night?", mTtsListener);
                         }
                     } catch (VoiceException e) {
                         Log.w(TAG, "Exception: ", e);
